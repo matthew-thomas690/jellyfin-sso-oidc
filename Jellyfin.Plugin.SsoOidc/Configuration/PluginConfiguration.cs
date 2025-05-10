@@ -1,22 +1,8 @@
+using System.Collections.Generic;
+using System.Xml.Serialization;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.SsoOidc.Configuration;
-
-/// <summary>
-/// The configuration options.
-/// </summary>
-public enum SomeOptions
-{
-    /// <summary>
-    /// Option one.
-    /// </summary>
-    OneOption,
-
-    /// <summary>
-    /// Second option.
-    /// </summary>
-    AnotherOption
-}
 
 /// <summary>
 /// Plugin configuration.
@@ -28,30 +14,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public PluginConfiguration()
     {
-        // set default options here
-        Options = SomeOptions.AnotherOption;
-        TrueFalseSetting = true;
-        AnInteger = 2;
-        AString = "string";
     }
 
     /// <summary>
-    /// Gets or sets a value indicating whether some true or false setting is enabled..
+    /// Gets the list of configured OpenID Connect providers.
     /// </summary>
-    public bool TrueFalseSetting { get; set; }
-
-    /// <summary>
-    /// Gets or sets an integer setting.
-    /// </summary>
-    public int AnInteger { get; set; }
-
-    /// <summary>
-    /// Gets or sets a string setting.
-    /// </summary>
-    public string AString { get; set; }
-
-    /// <summary>
-    /// Gets or sets an enum option.
-    /// </summary>
-    public SomeOptions Options { get; set; }
+    [XmlArray("OidConfigs")]
+    [XmlArrayItem("Provider")]
+    public IList<OidcProviderConfig> OidConfigs { get;  } = new List<OidcProviderConfig>();
 }
