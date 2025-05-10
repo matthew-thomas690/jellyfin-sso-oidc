@@ -206,7 +206,7 @@ This example expects you to clone `jellyfin`, `jellyfin-web` and `jellyfin-plugi
         // ${env:LOCALAPPDATA}/jellyfin
         "jellyfinDataDir" : "${env:LOCALAPPDATA}/jellyfin",
         // The name of the plugin
-        "pluginName" : "Jellyfin.Plugin.Template",
+        "pluginName" : "Jellyfin.Plugin.SsoOidc",
     }
    ```
 
