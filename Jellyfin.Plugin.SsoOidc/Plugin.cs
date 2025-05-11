@@ -20,6 +20,8 @@ namespace Jellyfin.Plugin.SsoOidc
         {
             Instance = this;
             EnsureDefaultGoogleProvider();
+            EnsureDefaultAuth0Provider();
+            SaveConfiguration();
         }
 
         public override string Name => "SSO OIDC";
@@ -55,7 +57,23 @@ namespace Jellyfin.Plugin.SsoOidc
                     OidSecret    = string.Empty,
                     OidScope     = "openid email"
                 });
-                SaveConfiguration();
+            }
+        }
+
+        private void EnsureDefaultAuth0Provider()
+        {
+            var cfg = Configuration;
+            if (!cfg.OidConfigs.Any(p => string.Equals(p.ProviderName, "Auth0", StringComparison.OrdinalIgnoreCase)))
+            {
+                cfg.OidConfigs.Add(new OidcProviderConfig
+                {
+                    ProviderName = "Auth0",
+                    Enabled      = false,
+                    OidEndpoint  = "",
+                    OidClientId  = string.Empty,
+                    OidSecret    = string.Empty,
+                    OidScope     = "openid email"
+                });
             }
         }
     }

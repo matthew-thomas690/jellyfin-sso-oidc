@@ -21,14 +21,15 @@
             </select>
           </div>
 
-          <!-- Read-only metadata -->
+          <!-- Editable metadata -->
           <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="ProviderName">Provider Name</label>
             <input id="ProviderName" is="emby-input" type="text" readonly />
           </div>
           <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="OidEndpoint">OIDC Endpoint</label>
-            <input id="OidEndpoint" is="emby-input" type="text" readonly />
+            <!-- Removed readonly to make endpoint editable -->
+            <input id="OidEndpoint" is="emby-input" type="text" />
           </div>
           <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="OidScope">OIDC Scope</label>
@@ -171,8 +172,9 @@
         e.preventDefault();
         showLoad();
 
-        // sync simple fields
+        // sync editable fields
         var p = cfg.OidConfigs[selIdx];
+        p.OidEndpoint = $('OidEndpoint').value;  // allow editing endpoint
         p.OidClientId = $('OidClientId').value;
         p.OidSecret   = $('OidSecret').value;
         p.Enabled     = $('Enabled').checked;

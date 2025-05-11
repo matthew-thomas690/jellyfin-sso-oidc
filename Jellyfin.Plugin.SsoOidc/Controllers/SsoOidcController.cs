@@ -15,6 +15,9 @@ using System.Text.Encodings.Web; // Required for JavaScriptEncoder
 // If Plugin.Instance is not a static member of a class named Plugin in your project,
 // you might need to adjust how AppVersion is retrieved or use a fixed string.
 using static Jellyfin.Plugin.SsoOidc.Plugin;
+using System.Collections.Generic;
+using System.Text;
+using System.Globalization;
 
 
 namespace Jellyfin.Plugin.SsoOidc.Controllers
@@ -43,6 +46,93 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             _userManager    = userManager;
             _logger.LogInformation("SsoOidcController initialized.");
         }
+
+        [HttpGet("Login")]
+        public IActionResult Login()
+        {
+            var providers = _config?.OidConfigs?
+                .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.ProviderName))
+                .Select(p => p.ProviderName!)
+                .Distinct()
+                .ToList()
+                ?? new List<string>();
+
+            var html = new StringBuilder();
+
+            // --- HTML head with Material Icons stylesheet ---
+            html.AppendLine("<!DOCTYPE html>");
+            html.AppendLine("<html><head>");
+            html.AppendLine("  <meta charset='utf-8' />");
+            html.AppendLine("  <title>SSO Login</title>");
+            html.AppendLine("  <!-- Load Google Material Icons -->");
+            html.AppendLine("  <link href=\"https://fonts.googleapis.com/icon?family=Material+Icons\" rel=\"stylesheet\" />");
+            html.AppendLine("  <style>");
+            html.AppendLine("    body { font-family: Arial; padding:20px; }");
+            html.AppendLine("    .btn {");
+            html.AppendLine("      display:flex; align-items:center; justify-content:center;");
+            html.AppendLine("      gap:10px; padding:12px 20px; font-size:16px;");
+            html.AppendLine("      background:#007bff; color:#fff; border:none; border-radius:4px;");
+            html.AppendLine("      text-decoration:none;");
+            html.AppendLine("    }");
+            html.AppendLine("    form { margin: 1em auto; width: fit-content; }");
+            html.AppendLine("  </style>");
+            html.AppendLine("</head><body>");
+
+            html.AppendLine("  <h2>Select your SSO provider</h2>");
+
+            foreach (var prov in providers)
+            {
+                var encoded = HtmlEncoder.Default.Encode(prov);
+
+                // Form wrapper to preserve _deviceId2 in Android WebView
+                html.AppendLine(CultureInfo.InvariantCulture, $"  <form action=\"/Plugins/SsoOidc/Authenticate/{encoded}\" method=\"get\" target=\"_self\">");
+                html.AppendLine("    <button class=\"btn emby-button button-submit\"");
+                html.AppendLine("            onclick=\"");
+                html.AppendLine("              if (!localStorage.getItem('_deviceId2') && window.NativeShell?.AppHost?.deviceId) {");
+                html.AppendLine("                localStorage.setItem('_deviceId2', window.NativeShell.AppHost.deviceId());");
+                html.AppendLine("              }");
+                html.AppendLine("            \"");
+                html.AppendLine("            type=\"submit\">");
+                html.AppendLine("      <span class=\"material-icons\" aria-hidden=\"true\">shield</span>");
+                html.AppendLine(CultureInfo.InvariantCulture, $"      <span>Sign in with {encoded}</span>");
+                html.AppendLine("    </button>");
+                html.AppendLine("  </form>");
+            }
+
+            html.AppendLine("</body></html>");
+
+            return Content(html.ToString(), "text/html");
+        }
+
+
+
+
+        [HttpGet("ActiveProviders")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public ActionResult<List<string>> GetActiveOidcProviders()
+        {
+            _logger.LogInformation("GetActiveOidcProviders: Request received.");
+
+            if (_config?.OidConfigs is not { } oidConfigs)
+            {
+                _logger.LogWarning("Plugin configuration or OidConfigs list is null.");
+                return new List<string>();
+            }
+
+            var providers = oidConfigs
+                .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.ProviderName))
+                .Select(p => p.ProviderName!)
+                .Distinct()
+                .ToList();
+
+            _logger.LogInformation(
+                "GetActiveOidcProviders: Returning {Count} active providers: {Providers}",
+                providers.Count,
+                providers);
+
+            return providers;
+        }
+
 
         [HttpGet("Authenticate/{providerName}")]
         public async Task<IActionResult> Authenticate(string providerName)
@@ -120,15 +210,7 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 return Content("<h1>Configuration Error</h1><p>SSO provider configuration not found or is disabled. Please contact your administrator.</p>", "text/html");
             }
 
-            var scheme = HttpContext.Request.Scheme;
-             if (!string.Equals(scheme, "https", StringComparison.OrdinalIgnoreCase) &&
-                !HttpContext.Request.Host.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) &&
-                !HttpContext.Request.Host.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogInformation("Callback: Current scheme is '{CurrentScheme}' for non-local host '{Host}'. Forcing HTTPS for redirect URI.", scheme, HttpContext.Request.Host.Host);
-                scheme = "https";
-            }
-            var redirectUri = Url.Action(nameof(Callback), "SsoOidc", new { providerName }, scheme);
+            var redirectUri = Url.Action(nameof(Callback), "SsoOidc", new { providerName }, "https");
             _logger.LogInformation("Callback: Determined Redirect URI for OIDC client: {RedirectUri}", redirectUri);
             
             var oidcClientOptions = OidcClientOptionsFactory.Create(
@@ -167,24 +249,84 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             }
             _logger.LogInformation("Callback: OIDC response processed successfully. Found {ClaimCount} claims.", oidcProcessingResult.User.Claims.Count());
             
+            // --- STEP 1: Determine which claim type to use for this provider ---
+            var claimType = GetClaimTypeFromScope(oidcProviderConfig.OidScope);
+            // (throws if OidScope is anything other than "openid" or "openid {claim}")
+
+            // --- STEP 2: Find that claim in the provider’s response ---
             var returnedOidcClaim = oidcProcessingResult.User.Claims
-                .FirstOrDefault(c => oidcProviderConfig.UserLink.Any(u => u.ClaimValue.Equals(c.Value, StringComparison.OrdinalIgnoreCase)));
-            
+                .FirstOrDefault(c => 
+                    c.Type.Equals(claimType, StringComparison.OrdinalIgnoreCase));
+
+            if(claimType == "email")
+            {
+                var emailVerifiedClaim = oidcProcessingResult.User.Claims
+                    .FirstOrDefault(c => c.Type.Equals("email_verified", StringComparison.OrdinalIgnoreCase));
+
+                    if (emailVerifiedClaim == null 
+                        || !bool.TryParse(emailVerifiedClaim.Value, out var isVerified) 
+                        || !isVerified)
+                    {
+                        return Content(
+                        "<h1>Login Failed</h1>" +
+                        "<p>Your email address has not been verified. Please verify it with your SSO provider before logging in.</p>",
+                        "text/html");
+                    }
+            }
+
             if (returnedOidcClaim == null)
             {
-                var availableClaimsForLog = string.Join("; ", oidcProcessingResult.User.Claims.Select(c => $"{c.Type}='{c.Value}'"));
-                _logger.LogWarning("Callback: No matching OIDC claim value found in UserLink configuration for provider '{ProviderName}'. Available claims: [{AvailableClaimsForLog}]", oidcProviderConfig.ProviderName, availableClaimsForLog);
-                return Content("<h1>Login Failed</h1><p>Your account is not linked to a Jellyfin user for this SSO provider. Please contact your administrator to link your account.</p>", "text/html");
+                var available = string.Join("; ",
+                    oidcProcessingResult.User.Claims
+                        .Select(c => $"{c.Type}='{c.Value}'"));
+                _logger.LogWarning(
+                    "Callback: Required claim '{ClaimType}' not found in OIDC response for provider '{ProviderName}'. Available: [{Available}].",
+                    claimType, oidcProviderConfig.ProviderName, available);
+                return Content(
+                    "<h1>Login Failed</h1>" +
+                    $"<p>Required claim '{claimType}' was not returned by the SSO provider.</p>",
+                    "text/html");
             }
-            _logger.LogInformation("Callback: Found matching OIDC claim: Type='{ClaimType}', Value='{ClaimValue}' for user linking.", returnedOidcClaim.Type, returnedOidcClaim.Value);
 
-            var userMappingEntry = oidcProviderConfig.UserLink.First(u => u.ClaimValue.Equals(returnedOidcClaim.Value, StringComparison.OrdinalIgnoreCase));
+            // --- STEP 3: Extract the claim’s value for mapping ---
+            var claimValue = returnedOidcClaim.Value;
+            _logger.LogInformation(
+                "Callback: Using OIDC claim '{ClaimType}' = '{ClaimValue}' for user lookup.",
+                claimType, claimValue);
+
+            // --- STEP 4: Find the UserLink entry by claimValue only (the provider’s ClaimType is implicit) ---
+            var userMappingEntry = oidcProviderConfig.UserLink
+                .FirstOrDefault(u =>
+                    u.ClaimValue.Equals(claimValue, StringComparison.OrdinalIgnoreCase));
+
+            if (userMappingEntry == null)
+            {
+                var configured = string.Join(", ",
+                    oidcProviderConfig.UserLink.Select(u => u.ClaimValue));
+                _logger.LogWarning(
+                    "Callback: No UserLink entry with ClaimValue='{ClaimValue}' for provider '{ProviderName}'. Configured: [{Configured}].",
+                    claimValue, oidcProviderConfig.ProviderName, configured);
+                return Content(
+                    "<h1>Login Failed</h1>" +
+                    "<p>Your account is not linked for this SSO provider. Please contact your administrator.</p>",
+                    "text/html");
+            }
+
+            // --- STEP 5: Parse the Jellyfin user GUID and handle errors ---
             if (!Guid.TryParse(userMappingEntry.UserId, out var jellyfinUserIdGuid))
             {
-                _logger.LogError("Callback: Could not parse configured UserId '{ConfiguredUserId}' to Guid for provider '{ProviderName}' and claim value '{ClaimValue}'.", userMappingEntry.UserId, oidcProviderConfig.ProviderName, returnedOidcClaim.Value);
-                return Content("<h1>Configuration Error</h1><p>There is an issue with the plugin's user mapping configuration (Invalid UserId format). Please contact your administrator.</p>", "text/html");
+                _logger.LogError(
+                    "Callback: Invalid UserId '{ConfiguredUserId}' in mapping for provider '{ProviderName}'.",
+                    userMappingEntry.UserId, oidcProviderConfig.ProviderName);
+                return Content(
+                    "<h1>Configuration Error</h1>" +
+                    "<p>The configured Jellyfin UserId is not a valid GUID. Please contact your administrator.</p>",
+                    "text/html");
             }
-            _logger.LogInformation("Callback: Mapped OIDC claim to Jellyfin UserId: {JellyfinUserIdGuid}", jellyfinUserIdGuid);
+
+            _logger.LogInformation(
+                "Callback: Mapped OIDC claim value '{ClaimValue}' to Jellyfin UserId {JellyfinUserId}.",
+                claimValue, jellyfinUserIdGuid);
 
             // jellyfinUser is of type Jellyfin.Data.Entities.User which has a Username property
             var jellyfinUser = _userManager.GetUserById(jellyfinUserIdGuid);
@@ -384,5 +526,44 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             _logger.LogInformation("Callback: Returning HTML content with embedded JavaScript to client for final login steps.");
             return Content(htmlOutput, "text/html");
         }
+
+        /// <summary>
+        /// Parses an OIDC scope of the form "openid" or "openid {claim}",
+        /// returning the claim type to match ("sub" for bare "openid", or "{claim}" otherwise).
+        /// Throws ArgumentException on any other format.
+        /// </summary>
+        private string GetClaimTypeFromScope(string oidScope)
+        {
+            if (string.IsNullOrWhiteSpace(oidScope))
+            {
+                throw new ArgumentException(
+                    "OIDC scope is not configured. Expected \"openid\" or \"openid {claim}\".",
+                    nameof(oidScope));
+            }
+
+            var parts = oidScope
+                .Trim()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            // exactly "openid" → sub
+            if (parts.Length == 1 &&
+                parts[0].Equals("openid", StringComparison.OrdinalIgnoreCase))
+            {
+                return "sub";
+            }
+
+            // exactly "openid {claim}"
+            if (parts.Length == 2 &&
+                parts[0].Equals("openid", StringComparison.OrdinalIgnoreCase))
+            {
+                return parts[1];
+            }
+
+            // anything else is a hard failure
+            throw new ArgumentException(
+                $"Invalid OIDC scope format: '{oidScope}'. " +
+                "Expected exactly 'openid' or 'openid {claim}'.");
+        }
+
     }
 }
