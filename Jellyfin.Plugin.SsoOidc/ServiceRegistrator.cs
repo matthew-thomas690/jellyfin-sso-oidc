@@ -22,8 +22,7 @@ namespace Jellyfin.Plugin.SsoOidc
             serviceCollection.AddHostedService<OidcStateCleanupService>();
 
             // 2) Expose plugin configuration
-            serviceCollection.AddSingleton(_ => Plugin.Instance!.Configuration);
-
+            serviceCollection.AddTransient(_ => Plugin.Instance!.Configuration);
         }
     }
 }
