@@ -1,24 +1,20 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Threading.Tasks;
-using Duende.IdentityModel.OidcClient; // Used for OidcClient, LoginResult, AuthorizeState
-using Jellyfin.Plugin.SsoOidc.Configuration; // Your specific configuration classes
-using Jellyfin.Plugin.SsoOidc.Services; // For IOidcStateStore and OidcStateEntry
+using Duende.IdentityModel.OidcClient;
+using Jellyfin.Plugin.SsoOidc.Configuration;
+using Jellyfin.Plugin.SsoOidc.Services;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Session;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using MediaBrowser.Controller.Session; // For ISessionManager and AuthenticationResult
-using Microsoft.AspNetCore.Http.Extensions; // For GetEncodedUrl()
-using MediaBrowser.Controller.Library; // For IUserManager
-using Microsoft.AspNetCore.Http; // For HttpContext, Request, Response, SameSiteMode
-using System.Text.Encodings.Web; // Required for JavaScriptEncoder
-// Assuming a static Plugin class instance for version.
-// If Plugin.Instance is not a static member of a class named Plugin in your project,
-// you might need to adjust how AppVersion is retrieved or use a fixed string.
 using static Jellyfin.Plugin.SsoOidc.Plugin;
-using System.Collections.Generic;
-using System.Text;
-using System.Globalization;
-
 
 namespace Jellyfin.Plugin.SsoOidc.Controllers
 {
@@ -39,11 +35,11 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             IOidcStateStore stateStore,
             IUserManager userManager)
         {
-            _config         = config;
+            _config = config;
             _sessionManager = sessionManager;
-            _logger         = logger;
-            _stateStore     = stateStore;
-            _userManager    = userManager;
+            _logger = logger;
+            _stateStore = stateStore;
+            _userManager = userManager;
             _logger.LogInformation("SsoOidcController initialized.");
         }
 
@@ -104,9 +100,6 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             return Content(html.ToString(), "text/html");
         }
 
-
-
-
         [HttpGet("ActiveProviders")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public ActionResult<List<string>> GetActiveOidcProviders()
@@ -133,7 +126,6 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             return providers;
         }
 
-
         [HttpGet("Authenticate/{providerName}")]
         public async Task<IActionResult> Authenticate(string providerName)
         {
@@ -154,10 +146,10 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 !HttpContext.Request.Host.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) &&
                 !HttpContext.Request.Host.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
             {
-                 _logger.LogInformation("Authenticate: Current scheme is '{CurrentScheme}' for non-local host '{Host}'. Forcing HTTPS for redirect URI.", scheme, HttpContext.Request.Host.Host);
+                _logger.LogInformation("Authenticate: Current scheme is '{CurrentScheme}' for non-local host '{Host}'. Forcing HTTPS for redirect URI.", scheme, HttpContext.Request.Host.Host);
                 scheme = "https";
             }
-            
+
             var redirectUri = Url.Action(nameof(Callback), "SsoOidc", new { providerName }, scheme);
             _logger.LogInformation("Authenticate: Determined Redirect URI: {RedirectUri}", redirectUri);
 
@@ -212,7 +204,7 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
 
             var redirectUri = Url.Action(nameof(Callback), "SsoOidc", new { providerName }, "https");
             _logger.LogInformation("Callback: Determined Redirect URI for OIDC client: {RedirectUri}", redirectUri);
-            
+
             var oidcClientOptions = OidcClientOptionsFactory.Create(
                 oidcProviderConfig.ProviderName,
                 oidcProviderConfig.OidEndpoint,
@@ -220,7 +212,7 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 oidcProviderConfig.OidSecret,
                 oidcProviderConfig.OidScope,
                 redirectUri);
-            
+
             var oidcClient = new OidcClient(oidcClientOptions);
             var currentCallbackUrl = Request.GetEncodedUrl();
             _logger.LogInformation("Callback: Processing OIDC response with Full URL: {CurrentCallbackUrl}", currentCallbackUrl);
@@ -230,15 +222,16 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
 
             if (oidcProcessingResult.IsError)
             {
-                _logger.LogError("Callback: OIDC ProcessResponseAsync error: {Error}. Description: {ErrorDescription}. " +
+                _logger.LogError(
+                    "Callback: OIDC ProcessResponseAsync error: {Error}. Description: {ErrorDescription}. " +
                                  "TokenResponse HttpError: {TokenResponseHttpError}, TokenResponse HttpErrorReason: {TokenResponseHttpErrorReason}, TokenResponse Error: {TokenResponseError}, TokenResponse ErrorDescription: {TokenResponseErrorDescription}, TokenResponse Raw: {TokenResponseRaw}", 
-                                 oidcProcessingResult.Error, 
-                                 oidcProcessingResult.ErrorDescription,
-                                 oidcProcessingResult.TokenResponse?.HttpStatusCode,
-                                 oidcProcessingResult.TokenResponse?.HttpErrorReason,
-                                 oidcProcessingResult.TokenResponse?.Error,
-                                 oidcProcessingResult.TokenResponse?.ErrorDescription,
-                                 oidcProcessingResult.TokenResponse?.Raw);
+                    oidcProcessingResult.Error,
+                    oidcProcessingResult.ErrorDescription,
+                    oidcProcessingResult.TokenResponse?.HttpStatusCode,
+                    oidcProcessingResult.TokenResponse?.HttpErrorReason,
+                    oidcProcessingResult.TokenResponse?.Error,
+                    oidcProcessingResult.TokenResponse?.ErrorDescription,
+                    oidcProcessingResult.TokenResponse?.Raw);
                 return Content($"<h1>Login Error</h1><p>Could not process the response from the SSO provider.</p><p>Details: {oidcProcessingResult.Error} - {oidcProcessingResult.ErrorDescription}</p><p>Please check plugin logs for more technical details and contact your administrator if the issue persists.</p>", "text/html");
             }
 
@@ -248,7 +241,7 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 return Content("<h1>Login Error</h1><p>Authentication with SSO provider succeeded, but no user information (claims) was returned. Please check the OIDC provider configuration and ensure scopes like 'openid', 'profile', 'email' are requested and allowed. Contact your administrator if the issue persists.</p>", "text/html");
             }
             _logger.LogInformation("Callback: OIDC response processed successfully. Found {ClaimCount} claims.", oidcProcessingResult.User.Claims.Count());
-            
+
             // --- STEP 1: Determine which claim type to use for this provider ---
             var claimType = GetClaimTypeFromScope(oidcProviderConfig.OidScope);
             // (throws if OidScope is anything other than "openid" or "openid {claim}")
@@ -276,12 +269,12 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
 
             if (returnedOidcClaim == null)
             {
-                var available = string.Join("; ",
+                var available = string.Join(
+                    "; ",
                     oidcProcessingResult.User.Claims
                         .Select(c => $"{c.Type}='{c.Value}'"));
                 _logger.LogWarning(
-                    "Callback: Required claim '{ClaimType}' not found in OIDC response for provider '{ProviderName}'. Available: [{Available}].",
-                    claimType, oidcProviderConfig.ProviderName, available);
+                    "Callback: Required claim '{ClaimType}' not found in OIDC response for provider '{ProviderName}'. Available: [{Available}].", claimType, oidcProviderConfig.ProviderName, available);
                 return Content(
                     "<h1>Login Failed</h1>" +
                     $"<p>Required claim '{claimType}' was not returned by the SSO provider.</p>",
@@ -291,8 +284,7 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             // --- STEP 3: Extract the claim’s value for mapping ---
             var claimValue = returnedOidcClaim.Value;
             _logger.LogInformation(
-                "Callback: Using OIDC claim '{ClaimType}' = '{ClaimValue}' for user lookup.",
-                claimType, claimValue);
+                "Callback: Using OIDC claim '{ClaimType}' = '{ClaimValue}' for user lookup.", claimType, claimValue);
 
             // --- STEP 4: Find the UserLink entry by claimValue only (the provider’s ClaimType is implicit) ---
             var userMappingEntry = oidcProviderConfig.UserLink
@@ -304,8 +296,7 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 var configured = string.Join(", ",
                     oidcProviderConfig.UserLink.Select(u => u.ClaimValue));
                 _logger.LogWarning(
-                    "Callback: No UserLink entry with ClaimValue='{ClaimValue}' for provider '{ProviderName}'. Configured: [{Configured}].",
-                    claimValue, oidcProviderConfig.ProviderName, configured);
+                    "Callback: No UserLink entry with ClaimValue='{ClaimValue}' for provider '{ProviderName}'. Configured: [{Configured}].", claimValue, oidcProviderConfig.ProviderName, configured);
                 return Content(
                     "<h1>Login Failed</h1>" +
                     "<p>Your account is not linked for this SSO provider. Please contact your administrator.</p>",
@@ -316,8 +307,7 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
             if (!Guid.TryParse(userMappingEntry.UserId, out var jellyfinUserIdGuid))
             {
                 _logger.LogError(
-                    "Callback: Invalid UserId '{ConfiguredUserId}' in mapping for provider '{ProviderName}'.",
-                    userMappingEntry.UserId, oidcProviderConfig.ProviderName);
+                    "Callback: Invalid UserId '{ConfiguredUserId}' in mapping for provider '{ProviderName}'.", userMappingEntry.UserId, oidcProviderConfig.ProviderName);
                 return Content(
                     "<h1>Configuration Error</h1>" +
                     "<p>The configured Jellyfin UserId is not a valid GUID. Please contact your administrator.</p>",
@@ -335,43 +325,50 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 _logger.LogWarning("Callback: Jellyfin user not found in the database for mapped UserId: {JellyfinUserIdGuid}", jellyfinUserIdGuid);
                 return Content("<h1>Login Failed</h1><p>The Jellyfin user associated with your SSO account could not be found. Please contact your administrator.</p>", "text/html");
             }
+
             _logger.LogInformation("Callback: Successfully loaded Jellyfin user: '{Username}' (Id: {UserId})", jellyfinUser.Username, jellyfinUser.Id);
 
             var jellyfinAuthRequest = new AuthenticationRequest
             {
-                UserId     = jellyfinUser.Id, 
-                Username   = jellyfinUser.Username, // Correct: Jellyfin.Data.Entities.User.Username
-                DeviceId   = $"SSO-{oidcProviderConfig.ProviderName.Replace(" ", "")}",
+                UserId = jellyfinUser.Id, 
+                Username = jellyfinUser.Username, // Correct: Jellyfin.Data.Entities.User.Username
+                DeviceId = $"SSO-{oidcProviderConfig.ProviderName.Replace(" ", "")}",
                 DeviceName = $"SSO via {oidcProviderConfig.ProviderName}",
-                App        = $"SSO OIDC Plugin ({oidcProviderConfig.ProviderName})",
+                App = $"SSO OIDC Plugin ({oidcProviderConfig.ProviderName})",
                 AppVersion = Instance?.Version.ToString() ?? "1.0.4" // Using static Plugin.Instance, incremented version
             };
+
             _logger.LogInformation("Callback: Attempting Jellyfin internal authentication for user '{Username}' with DeviceId '{DeviceId}'", jellyfinAuthRequest.Username, jellyfinAuthRequest.DeviceId);
 
             // jellyfinAuthResult is MediaBrowser.Controller.Authentication.AuthenticationResult
             var jellyfinAuthResult = await _sessionManager.AuthenticateDirect(jellyfinAuthRequest);
 
-            if (jellyfinAuthResult == null) {
+            if (jellyfinAuthResult == null)
+            {
                  _logger.LogError("Callback: Jellyfin AuthenticateDirect returned null. Authentication failed for user '{Username}'.", jellyfinAuthRequest.Username);
                  return Content("<h1>Login Failed</h1><p>Could not obtain a Jellyfin session (result was null). Please check server logs and contact your administrator.</p>", "text/html");
             }
-            if (string.IsNullOrEmpty(jellyfinAuthResult.AccessToken)) {
+
+            if (string.IsNullOrEmpty(jellyfinAuthResult.AccessToken))
+            {
                  _logger.LogError("Callback: Jellyfin AuthenticateDirect returned an empty AccessToken. Authentication failed for user '{Username}'. ServerId (from result): {ServerId}", jellyfinAuthRequest.Username, jellyfinAuthResult.ServerId);
                  return Content("<h1>Login Failed</h1><p>Could not obtain a Jellyfin session token. Please check server logs and contact your administrator.</p>", "text/html");
             }
-            if (jellyfinAuthResult.User == null) { // jellyfinAuthResult.User is MediaBrowser.Model.Dto.UserDto
+
+            if (jellyfinAuthResult.User == null)
+            { // jellyfinAuthResult.User is MediaBrowser.Model.Dto.UserDto
                  _logger.LogError("Callback: Jellyfin AuthenticateDirect returned a null User object (UserDto). Authentication failed for user '{Username}'. ServerId: {ServerId}", jellyfinAuthRequest.Username, jellyfinAuthResult.ServerId);
                  return Content("<h1>Login Failed</h1><p>Could not obtain Jellyfin user details for the session. Please check server logs and contact your administrator.</p>", "text/html");
             }
+
             // Correctly use .Name for UserDto
             _logger.LogInformation("Callback: Jellyfin internal authentication successful for user '{UserDtoName}'. AccessToken obtained. ServerId: {ServerId}, UserId (from Dto): {UserDtoId}", jellyfinAuthResult.User.Name, jellyfinAuthResult.ServerId, jellyfinAuthResult.User.Id);
-            
+
             // Data for JavaScript
             string DtoUserId = jellyfinAuthResult.User.Id.ToString();
             string DtoUsernameOrName = jellyfinAuthResult.User.Name; // Use .Name as per UserDto.cs
-            
-            _logger.LogDebug("Callback: Data for JS - AccessToken: {AccessTokenLength} chars, UserId (from Dto): {UserId}, ServerId: {ServerId}, Username/Name (from Dto): {UsernameOrName}", 
-                jellyfinAuthResult.AccessToken.Length, DtoUserId, jellyfinAuthResult.ServerId, DtoUsernameOrName);
+
+            _logger.LogDebug("Callback: Data for JS - AccessToken: {AccessTokenLength} chars, UserId (from Dto): {UserId}, ServerId: {ServerId}, Username/Name (from Dto): {UsernameOrName}", jellyfinAuthResult.AccessToken.Length, DtoUserId, jellyfinAuthResult.ServerId, DtoUsernameOrName);
 
             var currentRequest = HttpContext.Request;
             string webClientBaseUrl = $"{currentRequest.Scheme}://{currentRequest.Host}{currentRequest.PathBase}";
@@ -564,6 +561,5 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 $"Invalid OIDC scope format: '{oidScope}'. " +
                 "Expected exactly 'openid' or 'openid {claim}'.");
         }
-
     }
 }
