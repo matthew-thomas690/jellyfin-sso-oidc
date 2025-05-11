@@ -1,16 +1,16 @@
----
-name: "Template"
-guid: "eb5d7894-8eef-4b36-aa6f-5d124e828ce1"
+name: "SSO OIDC"
+guid: "c3ef348c-6871-42c1-8a0e-d03956c9bcf9"
 version: "1.0.0.0"
 targetAbi: "10.9.0.0"
 framework: "net8.0"
-overview: "Short description about your plugin"
+overview: "Single Sign-On using OpenID Connect (OIDC)."
 description: >
-  This is a longer description that can span more than one
-  line and include details about your plugin.
-category: "General"
-owner: "jellyfin"
+  This plugin enables Single Sign-On (SSO) in Jellyfin using OpenID Connect (OIDC).
+  It supports multiple OIDC providers including Google, and authenticates users based
+  on the 'email' claim. Providers can be configured via the plugin's settings UI.
+category: "Security"
+owner: "MatthewThomas"
 artifacts:
-- "Jellyfin.Plugin.Template.dll"
+  - "Jellyfin.Plugin.SsoOidc.dll"
 changelog: >
-  changelog
+  Initial release with support for Google OpenID Connect and user linking via email claims.

@@ -16,10 +16,12 @@ public class PluginConfiguration : BasePluginConfiguration
     {
     }
 
+    
+
     /// <summary>
-    /// Gets the list of configured OpenID Connect providers.
+    /// Gets or sets the list of configured OpenID Connect providers.
     /// </summary>
     [XmlArray("OidConfigs")]
     [XmlArrayItem("Provider")]
-    public IList<OidcProviderConfig> OidConfigs { get;  } = new List<OidcProviderConfig>();
+    public List<OidcProviderConfig> OidConfigs { get; set; } = new List<OidcProviderConfig>();
 }

@@ -1,79 +1,197 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Template</title>
+  <meta charset="utf-8" />
+  <title>SSO OIDC Configuration</title>
 </head>
 <body>
-    <div id="TemplateConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
-        <div data-role="content">
-            <div class="content-primary">
-                <form id="TemplateConfigForm">
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="Options">Several Options</label>
-                        <select is="emby-select" id="Options" name="Options" class="emby-select-withcolor emby-select">
-                            <option id="optOneOption" value="OneOption">One Option</option>
-                            <option id="optAnotherOption" value="AnotherOption">Another Option</option>
-                        </select>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AnInteger">An Integer</label>
-                        <input id="AnInteger" name="AnInteger" type="number" is="emby-input" min="0" />
-                        <div class="fieldDescription">A Description</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="TrueFalseSetting" name="TrueFalseCheckBox" type="checkbox" is="emby-checkbox" />
-                            <span>A Checkbox</span>
-                        </label>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AString">A String</label>
-                        <input id="AString" name="AString" type="text" is="emby-input" />
-                        <div class="fieldDescription">Another Description</div>
-                    </div>
-                    <div>
-                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                            <span>Save</span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-        <script type="text/javascript">
-            var TemplateConfig = {
-                pluginUniqueId: 'eb5d7894-8eef-4b36-aa6f-5d124e828ce1'
-            };
+  <div
+    id="SsoOidcConfigPage"
+    data-role="page"
+    class="page type-interior pluginConfigurationPage"
+    data-require="emby-input,emby-button,emby-select,emby-checkbox"
+  >
+    <div data-role="content">
+      <div class="content-primary">
+        <form id="SsoOidcConfigForm">
+          <!-- Provider selector -->
+          <div class="selectContainer">
+            <label class="selectLabel" for="ProviderSelect">Select Provider</label>
+            <select is="emby-select" id="ProviderSelect" class="emby-select-withcolor emby-select">
+            </select>
+          </div>
 
-            document.querySelector('#TemplateConfigPage')
-                .addEventListener('pageshow', function() {
-                    Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(TemplateConfig.pluginUniqueId).then(function (config) {
-                        document.querySelector('#Options').value = config.Options;
-                        document.querySelector('#AnInteger').value = config.AnInteger;
-                        document.querySelector('#TrueFalseSetting').checked = config.TrueFalseSetting;
-                        document.querySelector('#AString').value = config.AString;
-                        Dashboard.hideLoadingMsg();
-                    });
-                });
+          <!-- Read-only metadata -->
+          <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="ProviderName">Provider Name</label>
+            <input id="ProviderName" is="emby-input" type="text" readonly />
+          </div>
+          <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="OidEndpoint">OIDC Endpoint</label>
+            <input id="OidEndpoint" is="emby-input" type="text" readonly />
+          </div>
+          <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="OidScope">OIDC Scope</label>
+            <input id="OidScope" is="emby-input" type="text" readonly />
+          </div>
 
-            document.querySelector('#TemplateConfigForm')
-                .addEventListener('submit', function(e) {
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(TemplateConfig.pluginUniqueId).then(function (config) {
-                    config.Options = document.querySelector('#Options').value;
-                    config.AnInteger = document.querySelector('#AnInteger').value;
-                    config.TrueFalseSetting = document.querySelector('#TrueFalseSetting').checked;
-                    config.AString = document.querySelector('#AString').value;
-                    ApiClient.updatePluginConfiguration(TemplateConfig.pluginUniqueId, config).then(function (result) {
-                        Dashboard.processPluginConfigurationUpdateResult(result);
-                    });
-                });
+          <!-- Editable credentials -->
+          <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="OidClientId">Client ID</label>
+            <input id="OidClientId" is="emby-input" type="text" />
+          </div>
+          <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="OidSecret">Client Secret</label>
+            <input id="OidSecret" is="emby-input" type="password" />
+          </div>
 
-                e.preventDefault();
-                return false;
-            });
-        </script>
+          <!-- Enabled toggle -->
+          <div class="checkboxContainer checkboxContainer-withDescription">
+            <label class="emby-checkbox-label">
+              <input id="Enabled" name="Enabled" type="checkbox" is="emby-checkbox" />
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <!-- UserLink CRUD -->
+          <h3>User ↔ Jellyfin User ID Mappings</h3>
+          <div id="UserLinkContainer"></div>
+          <button id="AddMapping" type="button" is="emby-button" class="raised block emby-button">
+            <span>Add Mapping</span>
+          </button>
+
+          <!-- Save -->
+          <div style="margin-top:1em">
+            <button type="submit" is="emby-button" class="raised button-submit block emby-button">
+              <span>Save</span>
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
+
+    <script type="text/javascript">
+    (function(){
+      var cfg, selIdx = 0;
+      var PLUGIN = { id: 'c3ef348c-6871-42c1-8a0e-d03956c9bcf9' };
+
+      // Helpers
+      function $(id){ return document.getElementById(id); }
+      function showLoad(){ Dashboard.showLoadingMsg(); }
+      function hideLoad(){ Dashboard.hideLoadingMsg(); }
+
+      // Render dropdown & attach change
+      function populateProviders(){
+        var list = cfg.OidConfigs || [];
+        var sel = $('ProviderSelect');
+        sel.innerHTML = '';
+        list.forEach(function(p,i){
+          var o = document.createElement('option');
+          o.value = i; o.textContent = p.ProviderName;
+          sel.appendChild(o);
+        });
+        sel.onchange = function(){
+          selIdx = parseInt(this.value,10);
+          renderAll();
+        };
+      }
+
+      // Render fields + user links
+      function renderAll(){
+        var p = cfg.OidConfigs[selIdx];
+        $('ProviderSelect').value = selIdx;
+        $('ProviderName').value = p.ProviderName || '';
+        $('OidEndpoint').value = p.OidEndpoint || '';
+        $('OidScope').value = p.OidScope || '';
+        $('OidClientId').value = p.OidClientId || '';
+        $('OidSecret').value = p.OidSecret || '';
+        $('Enabled').checked = !!p.Enabled;
+
+        var ul = $('UserLinkContainer');
+        ul.innerHTML = '';
+        (p.UserLink||[]).forEach(function(e,i){
+          var row = document.createElement('div');
+          row.className = 'inputContainer'; row.style.display = 'flex'; row.style.gap='0.5em';
+
+          // Claim
+          var cv = document.createElement('input');
+          cv.setAttribute('is','emby-input'); cv.type='text';
+          cv.value = e.ClaimValue||''; cv.style.flex='1';
+          cv.placeholder = 'Claim';
+          cv.oninput = function(){ p.UserLink[i].ClaimValue = this.value; };
+          row.appendChild(cv);
+
+          // UserId
+          var uv = document.createElement('input');
+          uv.setAttribute('is','emby-input'); uv.type='text';
+          uv.value = e.UserId||''; uv.style.flex='1';
+          uv.placeholder = 'User ID';
+          uv.oninput = function(){ p.UserLink[i].UserId = this.value; };
+          row.appendChild(uv);
+
+          // Remove
+          var rm = document.createElement('button');
+          rm.setAttribute('is','emby-button'); rm.type='button';
+          rm.textContent = 'Remove';
+          rm.onclick = function(){
+            p.UserLink.splice(i,1);
+            renderAll();
+          };
+          row.appendChild(rm);
+
+          ul.appendChild(row);
+        });
+      }
+
+      // Add new mapping
+      $('AddMapping').onclick = function(){
+        cfg.OidConfigs[selIdx].UserLink.push({ ClaimValue:'', UserId:'' });
+        renderAll();
+      };
+
+      // Load config on pageshow
+      $('SsoOidcConfigPage').addEventListener('pageshow', function(){
+        showLoad();
+        ApiClient.getPluginConfiguration(PLUGIN.id)
+          .then(function(c){
+            cfg = c;
+            populateProviders();
+            selIdx = 0;
+            renderAll();
+          })
+          .catch(function(err){
+            console.error(err);
+            Dashboard.alert({ title:'Error', message:'Load failed', autoClose:true, timeout:5000 });
+          })
+          .finally(hideLoad);
+      });
+
+      // Save on submit
+      $('SsoOidcConfigForm').addEventListener('submit', function(e){
+        e.preventDefault();
+        showLoad();
+
+        // sync simple fields
+        var p = cfg.OidConfigs[selIdx];
+        p.OidClientId = $('OidClientId').value;
+        p.OidSecret   = $('OidSecret').value;
+        p.Enabled     = $('Enabled').checked;
+
+        ApiClient.updatePluginConfiguration(PLUGIN.id, cfg)
+          .then(function(res){
+            Dashboard.processPluginConfigurationUpdateResult(res);
+            Dashboard.alert({ title:'Saved', message:'Configuration saved', autoClose:true, timeout:3000 });
+          })
+          .catch(function(err){
+            console.error(err);
+            Dashboard.alert({ title:'Error', message:'Save failed', autoClose:true, timeout:5000 });
+          })
+          .finally(hideLoad);
+
+        return false;
+      });
+    })();
+    </script>
+  </div>
 </body>
 </html>
