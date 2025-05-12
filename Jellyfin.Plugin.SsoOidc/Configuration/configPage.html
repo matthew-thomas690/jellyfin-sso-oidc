@@ -17,8 +17,7 @@
           <!-- Provider selector -->
           <div class="selectContainer">
             <label class="selectLabel" for="ProviderSelect">Select Provider</label>
-            <select is="emby-select" id="ProviderSelect" class="emby-select-withcolor emby-select">
-            </select>
+            <select is="emby-select" id="ProviderSelect" class="emby-select-withcolor emby-select"></select>
           </div>
 
           <!-- Editable metadata -->
@@ -28,7 +27,6 @@
           </div>
           <div class="inputContainer">
             <label class="inputLabel inputLabelUnfocused" for="OidEndpoint">OIDC Endpoint</label>
-            <!-- Removed readonly to make endpoint editable -->
             <input id="OidEndpoint" is="emby-input" type="text" />
           </div>
           <div class="inputContainer">
@@ -72,109 +70,151 @@
     </div>
 
     <script type="text/javascript">
-    (function(){
+    ;(function(){
       var cfg, selIdx = 0;
+      var allUsers = [];
       var PLUGIN = { id: 'c3ef348c-6871-42c1-8a0e-d03956c9bcf9' };
 
-      // Helpers
       function $(id){ return document.getElementById(id); }
       function showLoad(){ Dashboard.showLoadingMsg(); }
       function hideLoad(){ Dashboard.hideLoadingMsg(); }
 
-      // Render dropdown & attach change
+      // Fetch Jellyfin users
+      function loadJellyfinUsers(){
+        return ApiClient.ajax({
+          url:    "/Plugins/SsoOidc/Users",
+          method: "GET",
+          dataType: "json"
+        })
+        .then(function(data){
+          allUsers = data;
+        })
+        .catch(function(err){
+          console.error("Failed to load users:", err);
+          Dashboard.alert({ title:'Error', message:'Failed to load users', autoClose:true, timeout:5000 });
+        });
+      }
+
+      // Populate provider dropdown
       function populateProviders(){
-        var list = cfg.OidConfigs || [];
         var sel = $('ProviderSelect');
         sel.innerHTML = '';
-        list.forEach(function(p,i){
+        (cfg.OidConfigs || []).forEach(function(p,i){
           var o = document.createElement('option');
-          o.value = i; o.textContent = p.ProviderName;
+          o.value = i;
+          o.textContent = p.ProviderName;
           sel.appendChild(o);
         });
         sel.onchange = function(){
-          selIdx = parseInt(this.value,10);
+          selIdx = +this.value;
           renderAll();
         };
       }
 
-      // Render fields + user links
+      // Render all fields including UserLink rows
       function renderAll(){
         var p = cfg.OidConfigs[selIdx];
-        $('ProviderSelect').value = selIdx;
-        $('ProviderName').value = p.ProviderName || '';
-        $('OidEndpoint').value = p.OidEndpoint || '';
-        $('OidScope').value = p.OidScope || '';
-        $('OidClientId').value = p.OidClientId || '';
-        $('OidSecret').value = p.OidSecret || '';
-        $('Enabled').checked = !!p.Enabled;
+        $('ProviderSelect').value  = selIdx;
+        $('ProviderName').value    = p.ProviderName || '';
+        $('OidEndpoint').value     = p.OidEndpoint || '';
+        $('OidScope').value        = p.OidScope || '';
+        $('OidClientId').value     = p.OidClientId || '';
+        $('OidSecret').value       = p.OidSecret || '';
+        $('Enabled').checked       = !!p.Enabled;
 
-        var ul = $('UserLinkContainer');
-        ul.innerHTML = '';
-        (p.UserLink||[]).forEach(function(e,i){
+        var container = $('UserLinkContainer');
+        container.innerHTML = '';
+
+        (p.UserLink || []).forEach(function(link, idx){
           var row = document.createElement('div');
-          row.className = 'inputContainer'; row.style.display = 'flex'; row.style.gap='0.5em';
+          row.className = 'inputContainer';
+          row.style.display = 'flex';
+          row.style.gap     = '0.5em';
 
-          // Claim
-          var cv = document.createElement('input');
-          cv.setAttribute('is','emby-input'); cv.type='text';
-          cv.value = e.ClaimValue||''; cv.style.flex='1';
-          cv.placeholder = 'Claim';
-          cv.oninput = function(){ p.UserLink[i].ClaimValue = this.value; };
-          row.appendChild(cv);
+          // Claim field
+          var claimInput = document.createElement('input');
+          claimInput.setAttribute('is','emby-input');
+          claimInput.type        = 'text';
+          claimInput.value       = link.ClaimValue || '';
+          claimInput.style.flex  = '1';
+          claimInput.placeholder = 'Claim';
+          claimInput.oninput     = function(){ link.ClaimValue = this.value; };
+          row.appendChild(claimInput);
 
-          // UserId
-          var uv = document.createElement('input');
-          uv.setAttribute('is','emby-input'); uv.type='text';
-          uv.value = e.UserId||''; uv.style.flex='1';
-          uv.placeholder = 'User ID';
-          uv.oninput = function(){ p.UserLink[i].UserId = this.value; };
-          row.appendChild(uv);
+          // User dropdown
+          var userSelect = document.createElement('select');
+          userSelect.setAttribute('is','emby-select');
+          userSelect.style.flex = '1';
 
-          // Remove
-          var rm = document.createElement('button');
-          rm.setAttribute('is','emby-button'); rm.type='button';
-          rm.textContent = 'Remove';
-          rm.onclick = function(){
-            p.UserLink.splice(i,1);
+          // Placeholder option
+          var placeholder = document.createElement('option');
+          placeholder.value       = '';
+          placeholder.textContent = '-- select user --';
+          placeholder.selected    = !link.UserId;
+          userSelect.appendChild(placeholder);
+
+          // Add all users with selection
+          allUsers.forEach(function(u){
+            var o = document.createElement('option');
+            o.value       = u.userId;
+            o.textContent = u.username;
+            if (u.userId === link.UserId) {
+              o.selected = true;
+            }
+            userSelect.appendChild(o);
+          });
+
+          userSelect.onchange = function(){
+            link.UserId = this.value;
+          };
+          row.appendChild(userSelect);
+
+          // Remove button
+          var removeBtn = document.createElement('button');
+          removeBtn.setAttribute('is','emby-button');
+          removeBtn.type        = 'button';
+          removeBtn.textContent = 'Remove';
+          removeBtn.onclick     = function(){
+            p.UserLink.splice(idx,1);
             renderAll();
           };
-          row.appendChild(rm);
+          row.appendChild(removeBtn);
 
-          ul.appendChild(row);
+          container.appendChild(row);
         });
       }
 
-      // Add new mapping
+      // Add mapping
       $('AddMapping').onclick = function(){
         cfg.OidConfigs[selIdx].UserLink.push({ ClaimValue:'', UserId:'' });
         renderAll();
       };
 
-      // Load config on pageshow
+      // Initialization on pageshow
       $('SsoOidcConfigPage').addEventListener('pageshow', function(){
         showLoad();
-        ApiClient.getPluginConfiguration(PLUGIN.id)
-          .then(function(c){
-            cfg = c;
-            populateProviders();
-            selIdx = 0;
-            renderAll();
-          })
-          .catch(function(err){
-            console.error(err);
-            Dashboard.alert({ title:'Error', message:'Load failed', autoClose:true, timeout:5000 });
-          })
-          .finally(hideLoad);
+        Promise.all([
+          ApiClient.getPluginConfiguration(PLUGIN.id).then(function(c){ cfg = c; }),
+          loadJellyfinUsers()
+        ])
+        .then(function(){
+          populateProviders();
+          selIdx = 0;
+          renderAll();
+        })
+        .catch(function(err){
+          console.error("Load error:", err);
+          Dashboard.alert({ title:'Error', message:'Load failed', autoClose:true, timeout:5000 });
+        })
+        .finally(hideLoad);
       });
 
-      // Save on submit
+      // Save handler
       $('SsoOidcConfigForm').addEventListener('submit', function(e){
         e.preventDefault();
         showLoad();
-
-        // sync editable fields
         var p = cfg.OidConfigs[selIdx];
-        p.OidEndpoint = $('OidEndpoint').value;  // allow editing endpoint
+        p.OidEndpoint = $('OidEndpoint').value;
         p.OidClientId = $('OidClientId').value;
         p.OidSecret   = $('OidSecret').value;
         p.Enabled     = $('Enabled').checked;
@@ -185,13 +225,14 @@
             Dashboard.alert({ title:'Saved', message:'Configuration saved', autoClose:true, timeout:3000 });
           })
           .catch(function(err){
-            console.error(err);
+            console.error("Save failed:", err);
             Dashboard.alert({ title:'Error', message:'Save failed', autoClose:true, timeout:5000 });
           })
           .finally(hideLoad);
 
         return false;
       });
+
     })();
     </script>
   </div>
