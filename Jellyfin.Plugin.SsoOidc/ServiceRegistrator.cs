@@ -17,12 +17,11 @@ namespace Jellyfin.Plugin.SsoOidc
         /// </summary>
         public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
-            // 1) OIDC state store & cleanup
             serviceCollection.AddSingleton<IOidcStateStore, InMemoryOidcStateStore>();
             serviceCollection.AddHostedService<OidcStateCleanupService>();
-
-            // 2) Expose plugin configuration
             serviceCollection.AddTransient(_ => Plugin.Instance!.Configuration);
+            serviceCollection.AddTransient<AutoLoginHtmlBuilder>();
+            serviceCollection.AddTransient<SSOLoginPageHtmlBuilder>();
         }
     }
 }
