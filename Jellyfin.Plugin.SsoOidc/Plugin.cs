@@ -25,7 +25,7 @@ namespace Jellyfin.Plugin.SsoOidc
         }
 
         public override string Name => "SSO OIDC";
-        public override Guid   Id   => Guid.Parse("c3ef348c-6871-42c1-8a0e-d03956c9bcf9");
+        public override Guid Id => Guid.Parse("c3ef348c-6871-42c1-8a0e-d03956c9bcf9");
 
         public static Plugin? Instance { get; private set; }
 
@@ -37,7 +37,7 @@ namespace Jellyfin.Plugin.SsoOidc
                 new PluginPageInfo
                 {
                     // This shows up at /web/Plugins/SsoOidc
-                    Name                 = Name,
+                    Name = Name,
                     EmbeddedResourcePath = $"{GetType().Namespace}.Configuration.configPage.html"
                 }
             };
@@ -51,11 +51,11 @@ namespace Jellyfin.Plugin.SsoOidc
                 cfg.OidConfigs.Add(new OidcProviderConfig
                 {
                     ProviderName = "Google",
-                    Enabled      = false,
-                    OidEndpoint  = "https://accounts.google.com",
-                    OidClientId  = string.Empty,
-                    OidSecret    = string.Empty,
-                    OidScope     = "openid email"
+                    Enabled = false,
+                    OidEndpoint = "https://accounts.google.com",
+                    OidClientId = string.Empty,
+                    OidSecret = string.Empty,
+                    OidScope = "openid email"
                 });
             }
         }
@@ -68,11 +68,11 @@ namespace Jellyfin.Plugin.SsoOidc
                 cfg.OidConfigs.Add(new OidcProviderConfig
                 {
                     ProviderName = "Auth0",
-                    Enabled      = false,
-                    OidEndpoint  = "",
-                    OidClientId  = string.Empty,
-                    OidSecret    = string.Empty,
-                    OidScope     = "openid email"
+                    Enabled = false,
+                    OidEndpoint = string.Empty,
+                    OidClientId = string.Empty,
+                    OidSecret = string.Empty,
+                    OidScope = "openid email"
                 });
             }
         }
