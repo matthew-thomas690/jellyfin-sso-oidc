@@ -234,8 +234,8 @@ namespace Jellyfin.Plugin.SsoOidc.Controllers
                 var emailVerifiedClaim = oidcProcessingResult.User.Claims
                     .FirstOrDefault(c => c.Type.Equals("email_verified", StringComparison.OrdinalIgnoreCase));
 
-                    if (emailVerifiedClaim == null 
-                        || !bool.TryParse(emailVerifiedClaim.Value, out var isVerified) 
+                if (emailVerifiedClaim == null
+                        || !bool.TryParse(emailVerifiedClaim.Value, out var isVerified)
                         || !isVerified)
                     {
                         return Content(
