@@ -7,57 +7,91 @@ using System.Text.Encodings.Web;
 namespace Jellyfin.Plugin.SsoOidc.Services
 {
     /// <summary>
-    /// In-memory implementation of IOidcStateStore using ConcurrentDictionary.
+    /// Builds a styled HTML SSO login page that visually matches the Jellyfin login screen.
     /// </summary>
     public class SSOLoginPageHtmlBuilder
     {
         public string CreateLoginPageHtml(List<string> providers)
         {
-            var html = new StringBuilder();
-
-            // --- HTML head with Material Icons stylesheet ---
-            html.AppendLine("<!DOCTYPE html>");
-            html.AppendLine("<html><head>");
-            html.AppendLine("  <meta charset='utf-8' />");
-            html.AppendLine("  <title>SSO Login</title>");
-            html.AppendLine("  <!-- Load Google Material Icons -->");
-            html.AppendLine("  <link href=\"https://fonts.googleapis.com/icon?family=Material+Icons\" rel=\"stylesheet\" />");
-            html.AppendLine("  <style>");
-            html.AppendLine("    body { font-family: Arial; padding:20px; }");
-            html.AppendLine("    .btn {");
-            html.AppendLine("      display:flex; align-items:center; justify-content:center;");
-            html.AppendLine("      gap:10px; padding:12px 20px; font-size:16px;");
-            html.AppendLine("      background:#007bff; color:#fff; border:none; border-radius:4px;");
-            html.AppendLine("      text-decoration:none;");
-            html.AppendLine("    }");
-            html.AppendLine("    form { margin: 1em auto; width: fit-content; }");
-            html.AppendLine("  </style>");
-            html.AppendLine("</head><body>");
-
-            html.AppendLine("  <h2>Select your SSO provider</h2>");
+            var body = new StringBuilder();
 
             foreach (var prov in providers)
             {
                 var encoded = HtmlEncoder.Default.Encode(prov);
-
-                // Form wrapper to preserve _deviceId2 in Android WebView
-                html.AppendLine(CultureInfo.InvariantCulture, $"  <form action=\"/Plugins/SsoOidc/Authenticate/{encoded}\" method=\"get\" target=\"_self\">");
-                html.AppendLine("    <button class=\"btn emby-button button-submit\"");
-                html.AppendLine("            onclick=\"");
-                html.AppendLine("              if (!localStorage.getItem('_deviceId2') && window.NativeShell?.AppHost?.deviceId) {");
-                html.AppendLine("                localStorage.setItem('_deviceId2', window.NativeShell.AppHost.deviceId());");
-                html.AppendLine("              }");
-                html.AppendLine("            \"");
-                html.AppendLine("            type=\"submit\">");
-                html.AppendLine("      <span class=\"material-icons\" aria-hidden=\"true\">shield</span>");
-                html.AppendLine(CultureInfo.InvariantCulture, $"      <span>Sign in with {encoded}</span>");
-                html.AppendLine("    </button>");
-                html.AppendLine("  </form>");
+                body.AppendLine(
+                    CultureInfo.InvariantCulture,
+                    $@"
+        <form action=""/Plugins/SsoOidc/Authenticate/{encoded}"" method=""get"">
+            <button class=""btn"" onclick=""if (!localStorage.getItem('_deviceId2') && window.NativeShell?.AppHost?.deviceId) {{
+                localStorage.setItem('_deviceId2', window.NativeShell.AppHost.deviceId());
+            }}"">
+                <span>Sign in with {encoded}</span>
+            </button>
+        </form>");
             }
 
-            html.AppendLine("</body></html>");
-            return html.ToString();
-        }
-    }    
-}
+            var html = $@"
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>SSO Login</title>
+    <style>
+        body {{
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+            background-color: #101010;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }}
+        .container {{
+            text-align: center;
+            background-color: #1b1b1b;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.4);
+        }}
+        h2 {{
+            margin-bottom: 2rem;
+        }}
+        .btn {{
+            width: 100%;
+            max-width: 300px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px;
+            background-color: #03a9f4;
+            color: white;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }}
+        .btn:hover {{
+            background-color: #0288d1;
+        }}
+        form {{
+            margin: 1rem 0;
+        }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h2>Connect using SSO</h2>
+        {body}
+    </div>
+</body>
+</html>";
 
+            return html;
+        }
+    }
+}

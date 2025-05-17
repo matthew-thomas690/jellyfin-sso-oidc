@@ -25,6 +25,7 @@ namespace Jellyfin.Plugin.SsoOidc
         }
 
         public override string Name => "SSO OIDC";
+
         public override Guid Id => Guid.Parse("c3ef348c-6871-42c1-8a0e-d03956c9bcf9");
 
         public static Plugin? Instance { get; private set; }
